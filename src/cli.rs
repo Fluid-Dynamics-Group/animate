@@ -1,12 +1,15 @@
 use clap::Parser;
+use clap::Subcommand;
 
-/// Animate pictures together into 
+use std::path::PathBuf;
+
+/// Animate pictures together into videos with ffmpeg
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 pub(crate) struct Args {
     /// print output of ffmpeg
     #[arg(short, long, default_value_t = false)]
-    verbose: u8,
+    verbose: bool,
 
     #[command(subcommand)]
     command: Command,
@@ -19,11 +22,11 @@ pub(crate) enum Command {
 }
 
 #[derive(Parser, Debug)]
-struct Folder {
+pub(crate) struct Folder {
     path: PathBuf
 }
 
 #[derive(Parser, Debug)]
-struct Pattern {
-    path: PathBuf
+pub(crate) struct Pattern {
+    path: Vec<PathBuf>
 }
