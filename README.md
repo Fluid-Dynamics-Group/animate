@@ -13,6 +13,13 @@ can be found [here](https://www.rust-lang.org/tools/install)
 cargo install --git https://github.com/fluid-Dynamics-Group/animate --force
 ```
 
+You must also have `ffmpeg` in your `$PATH`. It can be installed on debian based
+systems with:
+
+```
+sudo apt install ffmpeg
+```
+
 ## Usage
 
 Say you have a folder that contains a bunch of files that you want to animate together.
