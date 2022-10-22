@@ -12,7 +12,7 @@ pub(crate) struct Args {
     verbose: bool,
 
     #[command(subcommand)]
-    command: Command,
+    pub(crate) command: Command,
 }
 
 #[derive(Subcommand, Debug)]
