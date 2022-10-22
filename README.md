@@ -2,6 +2,8 @@
 
 helper script to combine images together into an animation with ffmpeg
 
+https://user-images.githubusercontent.com/45132001/197318694-81cb5759-ded8-4ebf-88b6-1f9a4b0180ac.mp4
+
 ## Install
 
 You need a recent version of the rust compiler. Install instructions 
