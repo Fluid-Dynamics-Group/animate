@@ -13,7 +13,6 @@ cargo install --git https://github.com/fluid-Dynamics-Group/animate --force
 
 ## Usage
 
-
 Say you have a folder that contains a bunch of files that you want to animate together.
 They are distinguished by a zero-padded index of the file. `animate` is a handy
 cli tool to parse the correct input arguments to `ffmpeg` to animate the files together
@@ -36,7 +35,7 @@ static
 ...
 ```
 
-## Animate all the files in a folder together
+### Animate all the files in a folder together
 
 in the above case, you could animate all the files in the child folder `./static` 
 at 30 fps into `output.mp4` with this command:
@@ -62,7 +61,7 @@ static
 this command will fail to run, since it cannot find a parsing method that works for all files.
 
 
-## Animate all files matching a pattern 
+### Animate all files matching a pattern 
 
 to handle the presence of additional files in a directory (such as the above `./another_file.txt` you
 can instead use xargs on linux to pass in a list of all files you wish to parse.
@@ -79,7 +78,7 @@ same base directory, so the following will not work:
 animate 30 ./output.mp4 pattern ./static/plot_anim_*.png ./another_dir/plot_anim_*.png
 ```
 
-## CLI Information
+### CLI Information
 
 ```
 $ animate --help
@@ -106,13 +105,13 @@ Options:
 ```
 
 
-# Saving data with zero padding
+## Saving data with zero padding
 
 Since this utility only work with zero-padded file names, its worthwhile
 to mention how to generate these filenames
 
 
-## Python
+### Python
 
 instead of generating a file name like this:
 
@@ -131,7 +130,7 @@ name = f"file_name{i:05}.png"
 
 This way, loop iteration `i=1` gets exported as `file_name00001.png`
 
-## Julia
+### Julia
 
 There are two ways to zero pad in julia:
 
