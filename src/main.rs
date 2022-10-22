@@ -25,7 +25,9 @@ fn folder(framerate: usize, output_path: PathBuf, args: cli::Folder) -> Result<(
 }
 
 fn pattern(framerate: usize, output_path: PathBuf, args: cli::Pattern) -> Result<()> {
+    // wrap everything in Ok() for type reasons
     let paths = args.paths.into_iter().map(Ok);
+
 
     generic_runner(framerate, output_path, paths)
 }
@@ -43,28 +45,33 @@ fn generic_runner(framerate: usize, output_path: PathBuf, mut file_paths: impl I
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("failed to convert filename of `{}` to UTF8 string", first.display()))?;
 
-    let second_name : &str= first.file_name()
+    let second_name : &str= second.file_name()
         .ok_or_else(|| anyhow::anyhow!("could not fetch filename for path {}", second.display()))?
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("failed to convert filename of `{}` to UTF8 string", second.display()))?;
 
+    dbg!(first_name, second_name);
+
     let compare = compare_paths(first_name, second_name)?;
+    
+    compare.check_path_compliance(file_paths)
+        .with_context(|| "failed to ensure all paths comply with parsed prefix / suffix / number padding format")?;
 
-    // TODO: verify that the rest of the files passed in also follow the format from `compare`
-
+    let base_folder = first.parent().unwrap();
     let ffmpeg_name = compare.ffmpeg_filename();
+    let ffmpeg_path = base_folder.join(ffmpeg_name);
 
-    run_ffmpeg_animate(output_path, &ffmpeg_name, framerate)?;
+    run_ffmpeg_animate(output_path, ffmpeg_path, framerate)?;
 
     Ok(())
 }
 
-fn run_ffmpeg_animate(output_path: PathBuf, ffmpeg_name: &str, framerate: usize) -> Result<()> {
+fn run_ffmpeg_animate(output_path: PathBuf, ffmpeg_path: PathBuf, framerate: usize) -> Result<()> {
     let sh = xshell::Shell::new()?;
 
     let framerate = framerate.to_string();
 
-    let cmd = xshell::cmd!(sh, "ffmpeg -r {framerate} -i {ffmpeg_name} -filter:v select='mod(n-1\\,2)' -c:v libx264 -vf 'pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p' {output_path}");
+    let cmd = xshell::cmd!(sh, "ffmpeg -y -r {framerate} -i {ffmpeg_path} -filter:v select='mod(n-1\\,2)' -c:v libx264 -vf 'pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p' {output_path}");
 
     cmd.run()?;
 
@@ -114,6 +121,40 @@ impl <'a> Comparison<'a> {
         let suffix = self.suffix;
         let zeros = self.zero_padding;
         format!("{prefix}%0{zeros}d{suffix}")
+    }
+
+    fn check_path_compliance(&self, paths: impl Iterator<Item=Result<PathBuf>>) -> Result<()> {
+        for path in paths {
+            let path = path?;
+
+            let name = path.file_name()
+                .ok_or_else(|| anyhow::anyhow!("could not fetch filename for path {}", path.display()))?
+                .to_str()
+                .ok_or_else(|| anyhow::anyhow!("failed to convert filename of `{}` to UTF8 string", path.display()))?;
+
+            if name.len() != self.prefix.len() + self.zero_padding + self.suffix.len() {
+                anyhow::bail!("path {} does not match parsed format {}", path.display(), self.ffmpeg_filename());
+            }
+
+            // here, the lengths should be the same so we start slicing things to ensure things are
+            // as they should be:
+            let prefix_end = self.prefix.len();
+            let suffix_start = self.prefix.len() + self.zero_padding;
+
+            let name_prefix = name.get(0..prefix_end)
+                .ok_or_else(|| anyhow::anyhow!("failed to slice prefix `{}` from filename `{name}`", self.prefix))?;
+            let name_suffix= name.get(suffix_start..)
+                .ok_or_else(|| anyhow::anyhow!("failed to slice suffix `{}` from filename `{name}`", self.suffix))?;
+
+            if self.prefix != name_prefix {
+                anyhow::bail!("filename `{name}` prefix `{name_prefix}` does not match template prefix `{}`", self.prefix)
+            }
+            else if self.suffix != name_suffix {
+                anyhow::bail!("filename `{name}` suffix `{name_suffix}` does not match template suffix `{}`", self.suffix)
+            }
+        }
+
+        Ok(())
     }
 } 
 
@@ -333,6 +374,7 @@ fn compare_paths<'a>(one: &'a str, two: &str) -> Result<Comparison<'a>> {
 mod tests {
     use super::compare_paths;
     use super::Comparison;
+    use std::path::PathBuf;
 
     #[test]
     fn simple_numerics() {
@@ -378,6 +420,48 @@ mod tests {
         };
 
         assert_eq!(res, expected);
+    }
+
+    #[test]
+    fn path_compliance_pass() {
+        // this is lifted from `leading_useless_numerics` test
+        let comp = Comparison {
+            prefix: "text_prefix_0001_other_stuff_",
+            suffix: ".ext",
+            zero_padding: 4
+        };
+
+        let other_paths = vec![
+            "text_prefix_0001_other_stuff_0001.ext",
+            "text_prefix_0001_other_stuff_0002.ext",
+            "text_prefix_0001_other_stuff_0003.ext",
+            "text_prefix_0001_other_stuff_0004.ext",
+            "text_prefix_0001_other_stuff_0005.ext",
+        ].into_iter().map(PathBuf::from).map(Ok);
+
+        comp.check_path_compliance(other_paths).unwrap();
+    }
+
+    #[test]
+    fn path_compliance_fail() {
+        // this is lifted from `leading_useless_numerics` test
+        let comp = Comparison {
+            prefix: "text_prefix_0001_other_stuff_",
+            suffix: ".ext",
+            zero_padding: 4
+        };
+
+        let other_paths = vec![
+            "text_prefix_0001_other_stuff_0001.ext",
+            "text_prefix_0001_other_stuff_0002.ext",
+            "text_prefix_0001_other_stuff_0003.ext",
+            // this one does not follow convention of the others:
+            "text_prefix_0002_other_stuff_0003.ext",
+            "text_prefix_0001_other_stuff_0005.ext",
+        ].into_iter().map(PathBuf::from).map(Ok);
+
+        let out = comp.check_path_compliance(other_paths);
+        assert_eq!(out.is_err(), true);
     }
 }
 
