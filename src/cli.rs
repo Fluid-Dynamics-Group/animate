@@ -11,6 +11,10 @@ pub(crate) struct Args {
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
 
+    pub(crate) framerate: usize,
+
+    pub(crate) output_path: PathBuf,
+
     #[command(subcommand)]
     pub(crate) command: Command,
 }
@@ -23,10 +27,10 @@ pub(crate) enum Command {
 
 #[derive(Parser, Debug)]
 pub(crate) struct Folder {
-    path: PathBuf
+    pub(crate) path: PathBuf
 }
 
 #[derive(Parser, Debug)]
 pub(crate) struct Pattern {
-    path: Vec<PathBuf>
+    pub(crate) paths: Vec<PathBuf>
 }

@@ -7,15 +7,66 @@ use std::fs;
 
 use std::path::{Path, PathBuf};
 
-use std::marker::PhantomData;
-
 fn main() -> Result<()> {
     let args = cli::Args::parse();
 
-    let folder = match args.command {
-        cli::Command::Folder(f) => f,
-        _ => unimplemented!()
+    match args.command {
+        cli::Command::Folder(f) => folder(args.framerate, args.output_path, f)?,
+        cli::Command::Pattern(p) => pattern(args.framerate, args.output_path, p)?,
     };
+
+    Ok(())
+}
+
+fn folder(framerate: usize, output_path: PathBuf, args: cli::Folder) -> Result<()> {
+    let paths = paths_in_dir(&args.path)?;
+
+    generic_runner(framerate, output_path, paths)
+}
+
+fn pattern(framerate: usize, output_path: PathBuf, args: cli::Pattern) -> Result<()> {
+    let paths = args.paths.into_iter().map(Ok);
+
+    generic_runner(framerate, output_path, paths)
+}
+
+fn generic_runner(framerate: usize, output_path: PathBuf, mut file_paths: impl Iterator<Item=Result<PathBuf>>) -> Result<()> {
+
+    let first: PathBuf = file_paths.next()
+        .ok_or_else(|| anyhow::anyhow!("failed to find a child file in the folder"))??;
+
+    let second : PathBuf = file_paths.next()
+        .ok_or_else(|| anyhow::anyhow!("failed to find a two child files in the folder"))??;
+
+    let first_name : &str= first.file_name()
+        .ok_or_else(|| anyhow::anyhow!("could not fetch filename for path {}", first.display()))?
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("failed to convert filename of `{}` to UTF8 string", first.display()))?;
+
+    let second_name : &str= first.file_name()
+        .ok_or_else(|| anyhow::anyhow!("could not fetch filename for path {}", second.display()))?
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("failed to convert filename of `{}` to UTF8 string", second.display()))?;
+
+    let compare = compare_paths(first_name, second_name)?;
+
+    // TODO: verify that the rest of the files passed in also follow the format from `compare`
+
+    let ffmpeg_name = compare.ffmpeg_filename();
+
+    run_ffmpeg_animate(output_path, &ffmpeg_name, framerate)?;
+
+    Ok(())
+}
+
+fn run_ffmpeg_animate(output_path: PathBuf, ffmpeg_name: &str, framerate: usize) -> Result<()> {
+    let sh = xshell::Shell::new()?;
+
+    let framerate = framerate.to_string();
+
+    let cmd = xshell::cmd!(sh, "ffmpeg -r {framerate} -i {ffmpeg_name} -filter:v select='mod(n-1\\,2)' -c:v libx264 -vf 'pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p' {output_path}");
+
+    cmd.run()?;
 
     Ok(())
 }
@@ -57,6 +108,15 @@ struct Comparison<'a> {
     suffix: &'a str
 }
 
+impl <'a> Comparison<'a> {
+    fn ffmpeg_filename(&self) -> String {
+        let prefix = self.prefix;
+        let suffix = self.suffix;
+        let zeros = self.zero_padding;
+        format!("{prefix}%0{zeros}d{suffix}")
+    }
+} 
+
 /// type state for [`CompareState`] - we are finding characters that do not match 
 /// between the two strings
 #[derive(Debug)]
@@ -91,7 +151,7 @@ impl CompareState<Prefix> {
         if l == r {
             // they characters are the same, and they are numeric, we should
             // go to the numeric parser
-            if l.is_digit(10) {
+            if l.is_ascii_digit() {
                 let state = CompareState {
                     state: Numerics {
                         prefix_length: self.state.prefix_length,
@@ -111,7 +171,7 @@ impl CompareState<Prefix> {
         } else {
             // if they are different, but still digits, then 
             // we enter the numeric parser
-            if l.is_digit(10) && r.is_digit(10) {
+            if l.is_ascii_digit() && r.is_ascii_digit() {
                 let state = CompareState {
                     state: Numerics {
                         prefix_length: self.state.prefix_length,
@@ -136,9 +196,9 @@ impl CompareState<Numerics> {
         if l == r {
             // the characters are the same, and they are also digits
             // so we continue on our current trajectory
-            if l.is_digit(10) {
+            if l.is_ascii_digit() {
                 self.state.numeric_length += 1;
-                return Ok(EitherT::Continue(self))
+                Ok(EitherT::Continue(self))
             } 
             // the characters are the same, and the character is NOT 
             // numeric, this means we are still in the prefix
@@ -177,9 +237,9 @@ impl CompareState<Numerics> {
             // 0005
             // 0004
             // are in the same padding, but 5 and 4 are different numeric characters
-            if l.is_digit(10) && r.is_digit(10) {
+            if l.is_ascii_digit() && r.is_ascii_digit() {
                 self.state.numeric_length += 1;
-                return Ok(EitherT::Continue(self))
+                Ok(EitherT::Continue(self))
             } 
             // they are not numeric digits and they are not the same,
             // this should not happen unless the strings are not the same
@@ -203,9 +263,6 @@ impl CompareState<Suffix> {
 }
 
 fn compare_paths<'a>(one: &'a str, two: &str) -> Result<Comparison<'a>> {
-    let mut prefix_length : usize = 0;
-    let suffix_start: usize;
-
     let mut iter = one.chars().zip(two.chars());
 
     let mut prefix = CompareState {
@@ -252,13 +309,9 @@ fn compare_paths<'a>(one: &'a str, two: &str) -> Result<Comparison<'a>> {
         }
     }
 
-    loop {
-        if let Some((l,r)) = iter.next() {
-            suffix.suffix_match(l,r)
-                .with_context(|| "while parsing suffix")?;
-        } else {
-            break
-        }
+    for (l,r) in iter {
+        suffix.suffix_match(l,r)
+            .with_context(|| "while parsing suffix")?;
     }
 
     dbg!(&suffix);
