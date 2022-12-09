@@ -124,7 +124,7 @@ to mention how to generate these filenames
 
 instead of generating a file name like this:
 
-```
+```python
 import matplotlib.pyplot as plt
 for i in range(100):
 	name = f"file_name{i}.png"
@@ -133,7 +133,7 @@ for i in range(100):
 
 do:
 
-```
+```python
 name = f"file_name{i:05}.png"
 ```
 
@@ -144,7 +144,7 @@ This way, loop iteration `i=1` gets exported as `file_name00001.png`
 There are two ways to zero pad in julia:
 
 instead of 
-```
+```julia
 for i in 1:100
 	name = "file_name_" * string(i) * ".png"
 end
@@ -152,13 +152,13 @@ end
 
 do:
 
-```
+```julia
 name = "file_name_" * lpad(i, 5, "0") * ".png"
 ```
 
 or:
 
-```
+```julia
 using Printf
 name = @sprintf "file_name_%05i.png" i
 ```
